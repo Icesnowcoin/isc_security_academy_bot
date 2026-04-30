@@ -1,32 +1,28 @@
-import os, json, glob
-from config import CONTENT_DIR, STATE_FILE, DEFAULT_LANG
+import os
+import glob
+from config import CONTENT_DIR, DEFAULT_LANG
 
 def load_topic(index: int, lang: str = DEFAULT_LANG):
     """按索引加载指定语言的主题内容"""
     pattern = os.path.join(CONTENT_DIR, lang, "*.md")
+    # 确保按文件名排序，如 01_xxx.md, 02_xxx.md
     files = sorted(glob.glob(pattern))
     if not files:
         return None
+    
+    # 循环播放：如果索引超过文件总数，则取模
     idx = index % len(files)
     filepath = files[idx]
     
-    with open(filepath, "r", encoding="utf-8") as f:
-        lines = f.readlines()
-    
-    title = lines[0].replace("# ", "").strip() if lines else "Untitled"
-    body = "".join(lines[1:]).strip()
-    return {"index": idx, "title": title, "body": body, "source": filepath}
-
-def get_next_index():
-    """读取状态文件，返回下一个应推送的索引"""
-    if not os.path.exists(STATE_FILE):
-        return 0
-    with open(STATE_FILE, "r", encoding="utf-8") as f:
-        state = json.load(f)
-    return state.get("last_index", 0)
-
-def save_index(index: int):
-    """保存推送进度"""
-    os.makedirs(os.path.dirname(STATE_FILE), exist_ok=True)
-    with open(STATE_FILE, "w", encoding="utf-8") as f:
-        json.dump({"last_index": index}, f, ensure_ascii=False)
+    try:
+        with open(filepath, "r", encoding="utf-8") as f:
+            lines = f.readlines()
+        
+        if not lines:
+            return None
+            
+        title = lines[0].replace("#", "").strip()
+        body = "".join(lines[1:]).strip()
+        return {"index": idx, "title": title, "body": body, "source": filepath}
+    except Exception:
+        return None

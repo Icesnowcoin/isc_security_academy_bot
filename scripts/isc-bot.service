@@ -1,0 +1,14 @@
+[Unit]
+Description=ISC Security Academy Telegram Bot
+After=network.target
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/opt/isc-security-bot
+ExecStart=/opt/isc-security-bot/scripts/start.sh
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
