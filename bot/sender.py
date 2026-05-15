@@ -1,59 +1,62 @@
 import logging
 from telegram import Bot
-from bot.config import TARGET_CHAT_IDS
-from bot.content_loader import load_topic
-from bot.state_manager import get_last_index, save_last_index
+from telegram.constants import ParseMode
+from config import BOT_TOKEN, TARGET_CHAT_IDS, DEFAULT_LANG
+from content_loader import load_topic
+from state_manager import get_last_index, save_last_index
 
 logger = logging.getLogger(__name__)
+bot = Bot(token=BOT_TOKEN)
 
-async def push_daily(bot: Bot, lang: str = 'zh'):
-    """
-    执行每日推送
-    :param bot: Telegram Bot 实例
-    :param lang: 推送语言 ('zh' 或 'en')
-    """
+async def push_daily():
     idx = get_last_index()
-    topic = load_topic(idx, lang)
+    topic = load_topic(idx, DEFAULT_LANG)
     
     if not topic:
-        logger.warning(f"未找到 {lang} 语言的主题内容")
+        logger.warning(f"未找到主题内容 (Index: {idx})")
         return
 
-    # 根据语言定制页脚
-    if lang == 'zh':
-        footer = "🕐 每日12:00更新 · 社区共建 · 安全第一"
-        header = "📚 *ISC 去中心化安全讲堂*"
-        issue_label = "第"
-        issue_suffix = "期"
-    else:
-        footer = "🕐 Daily 20:00 Update · Community Built · Security First"
-        header = "📚 *ISC Security Academy*"
-        issue_label = "Issue #"
-        issue_suffix = ""
-
+    title = topic['title']
+    body = topic['body']
+    
+    # 构造标准消息
     message = (
-        f"{header}\n"
-        f"{issue_label} {idx + 1} {issue_suffix} | {topic['title']}\n\n"
-        f"{topic['body']}\n\n"
+        f"📚 *ISC 去中心化安全讲堂*\n"
+        f"第 {idx + 1} 期 | {title}\n\n"
+        f"{body}\n\n"
         f"━━━━━━━━━━━━━━\n"
-        f"{footer}"
+        f"🕐 每日12:00更新 · 社区共建 · 安全第一"
     )
 
     success_count = 0
     for chat_id in TARGET_CHAT_IDS:
+        chat_id = chat_id.strip()
+        if not chat_id: continue
+        
         try:
+            # 优先尝试 Markdown 模式
             await bot.send_message(
                 chat_id=chat_id,
                 text=message,
-                parse_mode="Markdown",
+                parse_mode=ParseMode.MARKDOWN,
                 disable_web_page_preview=False
             )
-            logger.info(f"已推送 {lang} 内容至 {chat_id}: {topic['title']}")
+            logger.info(f"已推送至 {chat_id}: {title}")
             success_count += 1
         except Exception as e:
-            logger.error(f"推送失败 {chat_id} ({lang}): {e}")
+            logger.error(f"Markdown 推送失败，尝试纯文本补发: {e}")
+            try:
+                # 容错：如果 Markdown 报错，移除标记符以纯文本发送
+                await bot.send_message(
+                    chat_id=chat_id,
+                    text=message.replace("*", "").replace("_", ""),
+                    disable_web_page_preview=False
+                )
+                logger.info(f"已通过纯文本模式补发至 {chat_id}")
+                success_count += 1
+            except Exception as e2:
+                logger.error(f"纯文本补发也失败: {e2}")
     
-    # 只有在推送成功且为默认语言（或特定逻辑）时才增加索引
-    # 这里我们设定：如果是中文推送，则增加索引（因为中文是每天第一个推送）
-    if success_count > 0 and lang == 'zh':
+    # 只要有一个成功发送，就推进到下一期
+    if success_count > 0:
         save_last_index(idx + 1)
